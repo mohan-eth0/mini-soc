@@ -1,0 +1,117 @@
+---
+rules:
+  #########################################
+  # 1. XSS – Dangerous Markup()
+  #########################################
+  - id: python-xss-markup-untrusted
+    languages: [python]
+    severity: ERROR
+    message: "Potential XSS: Markup() used with untrusted input"
+    metadata:
+      category: security
+      cwe: "CWE-79"
+    patterns:
+      - pattern: Markup($X)
+      - pattern-either:
+          - pattern: request.args.get($A)
+          - pattern: request.form.get($A)
+          - pattern: request.values.get($A)
+
+  #########################################
+  # 2. SQL Injection
+  #########################################
+  - id: python-sqli-string-format
+    languages: [python]
+    severity: ERROR
+    message: "Possible SQL Injection using unsafe string formatting"
+    metadata:
+      category: security
+      cwe: "CWE-89"
+    patterns:
+      - pattern-either:
+          - pattern: cursor.execute("..." + $X)
+          - pattern: cursor.execute(f"...{$X}...")
+          - pattern: cursor.execute("...{}...".format($X))
+
+  #########################################
+  # 3. Command Injection – shell=True
+  #########################################
+  - id: python-command-injection-shelltrue
+    languages: [python]
+    severity: CRITICAL
+    message: "Dangerous use of subprocess with shell=True"
+    metadata:
+      cwe: "CWE-78"
+    patterns:
+      - pattern-either:
+          - pattern: subprocess.call($CMD, shell=True)
+          - pattern: subprocess.run($CMD, shell=True)
+          - pattern: subprocess.Popen($CMD, shell=True)
+
+  #########################################
+  # 4. Sensitive editors (vim/nano editing /etc files)
+  #########################################
+  - id: editor-sensitive-file
+    languages: [python]
+    severity: WARNING
+    message: "Editing sensitive system file—possible privilege abuse"
+    metadata:
+      cwe: "CWE-266"
+    patterns:
+      - pattern-either:
+          - pattern: os.system("vim /etc/$X")
+          - pattern: os.system("nano /etc/$X")
+          - pattern: subprocess.call("vim /etc/$X", shell=True)
+          - pattern: subprocess.call("nano /etc/$X", shell=True)
+
+  #########################################
+  # 5. Scanner tools (nmap/masscan/zmap)
+  #########################################
+  - id: scanner-tool-detected
+    languages: [python, bash]
+    severity: WARNING
+    message: "Scanner tool detected (nmap, masscan, zmap)"
+    metadata:
+      cwe: "CWE-1038"
+    patterns:
+      - pattern-either:
+          - pattern: subprocess.run("nmap...", shell=True)
+          - pattern: subprocess.run("masscan...", shell=True)
+          - pattern: nmap
+          - pattern: masscan
+          - pattern: zmap
+
+  #########################################
+  # 6. Weak hashing algorithms
+  #########################################
+  - id: weak-hash-md5-sha1
+    languages: [python]
+    severity: WARNING
+    message: "Weak hashing algorithm used (MD5/SHA1)"
+    patterns:
+      - pattern-either:
+          - pattern: hashlib.md5(...)
+          - pattern: hashlib.sha1(...)
+
+  #########################################
+  # 7. Hardcoded credentials
+  #########################################
+  - id: python-hardcoded-credentials
+    languages: [python]
+    severity: ERROR
+    message: "Hardcoded credentials found"
+    patterns:
+      - pattern-regex: >
+          (password|passwd|secret|api_key|token)\s*=\s*["'][A-Za-z0-9_!@#$%^&*\-]+["']
+
+  #########################################
+  # 8. Unsafe eval/exec
+  #########################################
+  - id: python-unsafe-eval
+    languages: [python]
+    severity: CRITICAL
+    message: "Use of eval() or exec() is dangerous"
+    patterns:
+      - pattern-either:
+          - pattern: eval($X)
+          - pattern: exec($X)
