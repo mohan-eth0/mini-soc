@@ -86,8 +86,6 @@ Example report(JSON):-
 
 🚀 Future Enhancements
 
-MITRE ATT&CK technique mapping
-
 Alert suppression / cooldown windows
 
 Email or Slack alerting
