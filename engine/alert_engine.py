@@ -1,31 +1,39 @@
 #!/usr/bin/env python3
 """
-Alert Engine
-Responsible only for presenting detections to the analyst.
+Incident Presentation Engine
+----------------------------
+Displays SOC-style incidents (not raw alerts).
 """
 
-from datetime import datetime
+import datetime
 
 
-def send(detection: dict):
-    """
-    Print a SOC-style alert to stdout.
-    """
-
-    ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    rule = detection.get("rule", "UNKNOWN")
-    severity = detection.get("severity", "LOW")
-    ip = detection.get("ip", "N/A")
+def present_incident(incident):
+    ts = datetime.datetime.fromtimestamp(
+        incident["alert_time"]
+    ).strftime("%Y-%m-%d %H:%M:%S")
 
     print("=" * 70)
-    print(f"[ALERT] {rule}")
+    print(f"[INCIDENT] {incident['incident_id']}")
     print(f" Time      : {ts}")
-    print(f" Severity  : {severity}")
-    print(f" Source IP: {ip}")
+    print(f" Source IP : {incident['source_ip']}")
+    print(f" Severity  : {incident['severity']}")
+    print(f" Confidence: {incident['confidence']}")
+    print(" Signals   :")
 
-    # Print remaining context
-    for k, v in detection.items():
-        if k not in ("rule", "severity", "ip"):
-            print(f" {k}: {v}")
+    for sig in incident["signals"]:
+        print(
+            f"   - {sig['rule']} "
+            f"(count={sig['count']}) "
+            f"[{sig['mitre']}]"
+        )
 
     print("=" * 70)
+
+
+def send(incident):
+    """
+    Entry point used by main.py
+    """
+    present_incident(incident)
+

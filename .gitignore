@@ -1,15 +1,28 @@
-# Python virtual environment
-.venv/
-
-# Python cache
+# Python
 __pycache__/
 *.pyc
+*.pyo
+*.pyd
 
-# Pytest cache
-.pytest_cache/
+# Virtual environments
+.venv/
+venv/
+env/
 
-# Local database (runtime data)
-incidents.db
+# Databases / runtime state
+*.db
+
+# Logs & reports
+reports/*.json
+reports/*.log
 
 # OS junk
 .DS_Store
+Thumbs.db
+
+# Editor files
+.vscode/
+.idea/
+
+# Test cache
+.pytest_cache/

@@ -2,7 +2,14 @@
 """
 Rule Engine
 -----------
-Transforms normalized security events into high-signal incidents.
+SOC-grade incident correlation engine.
+
+Key features:
+- Sliding window detections
+- Dynamic severity scoring
+- Confidence scoring
+- MITRE-aware signals
+- Incident-level correlation (SIEM/SOAR model)
 """
 
 import time
@@ -24,25 +31,33 @@ def init_db():
         CREATE TABLE IF NOT EXISTS incidents (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             ts INTEGER,
-            rule TEXT,
+            incident_id TEXT,
             source_ip TEXT,
-            details TEXT,
-            severity TEXT
+            severity TEXT,
+            confidence REAL,
+            details TEXT
         )
     """)
     conn.commit()
     conn.close()
 
 
-def create_incident(rule, ip, details, severity):
+def persist_incident(incident):
     conn = sqlite3.connect(DB_PATH)
     cur = conn.cursor()
     cur.execute(
         """
-        INSERT INTO incidents (ts, rule, source_ip, details, severity)
-        VALUES (?, ?, ?, ?, ?)
+        INSERT INTO incidents (ts, incident_id, source_ip, severity, confidence, details)
+        VALUES (?, ?, ?, ?, ?, ?)
         """,
-        (int(time.time()), rule, ip, details, severity)
+        (
+            int(time.time()),
+            incident["incident_id"],
+            incident["source_ip"],
+            incident["severity"],
+            incident["confidence"],
+            str(incident["signals"])
+        )
     )
     conn.commit()
     conn.close()
@@ -59,150 +74,234 @@ PORT_HITS = defaultdict(deque)
 SUDO_FAILS = defaultdict(deque)
 
 # =========================
-# Detection thresholds
+# Thresholds
 # =========================
 SSH_FAIL_THRESHOLD = 5
 SSH_FAIL_WINDOW = 300
 
-PORT_SCAN_THRESHOLD = 10
-
 SUDO_FAIL_THRESHOLD = 5
 SUDO_FAIL_WINDOW = 300
 
+PORT_SCAN_THRESHOLD = 10
 SSH_SUCCESS_WINDOW = 600
 
 # =========================
-# Utility
+# Incident store
+# =========================
+INCIDENTS = {}
+
+# =========================
+# Utility helpers
 # =========================
 def _cleanup(dq, window, now):
     while dq and dq[0] < now - window:
         dq.popleft()
 
 
+def severity_rank(sev):
+    return {
+        "LOW": 1,
+        "MEDIUM": 2,
+        "HIGH": 3,
+        "CRITICAL": 4
+    }.get(sev, 0)
+
+
+def calculate_severity(count):
+    if count > 20:
+        return "CRITICAL"
+    elif count > 10:
+        return "HIGH"
+    else:
+        return "MEDIUM"
+
+
+def calculate_confidence(count, max_attempts=20):
+    return round(min(1.0, count / max_attempts), 2)
+
+
 # =========================
-# MAIN RULE ENGINE
+# Incident helpers
+# =========================
+def generate_incident_id():
+    date = time.strftime("%Y%m%d")
+    seq = len(INCIDENTS) + 1
+    return f"INC-{date}-{seq:03d}"
+
+
+def get_incident(ip, ts):
+    if ip not in INCIDENTS:
+        INCIDENTS[ip] = {
+            "incident_id": generate_incident_id(),
+            "source_ip": ip,
+            "severity": "LOW",
+            "confidence": 0.0,
+            "first_seen": ts,
+            "last_seen": ts,
+            "alert_time": ts,
+            "signals": []
+        }
+    return INCIDENTS[ip]
+
+
+def add_signal(incident, rule, count, severity, confidence, mitre_id):
+    incident["last_seen"] = int(time.time())
+
+    # Escalate severity
+    if severity_rank(severity) > severity_rank(incident["severity"]):
+        incident["severity"] = severity
+        incident["alert_time"] = incident["last_seen"]
+
+    # Max confidence wins
+    incident["confidence"] = round(
+        max(incident["confidence"], confidence), 2
+    )
+
+    # Merge signal
+    for s in incident["signals"]:
+        if s["rule"] == rule:
+            s["count"] += count
+            return
+
+    incident["signals"].append({
+        "rule": rule,
+        "count": count,
+        "mitre": mitre_id
+    })
+
+
+# =========================
+# MAIN ENGINE
 # =========================
 def evaluate(events):
-    detections = []
-
-    # Reset batch-only PORT_SCAN state
     PORT_HITS.clear()
 
     for event in events:
         etype = event.get("type")
         ip = event.get("ip")
-        ts = event.get("timestamp", time.time())
-        now = ts
+        ts = int(event.get("timestamp", time.time()))
 
+        if not ip:
+            continue
+
+        # -------------------------
         # SSH brute-force
-        if etype == "ssh_failed" and ip:
+        # -------------------------
+        if etype == "ssh_failed":
             dq = SSH_FAILS[ip]
             dq.append(ts)
-            _cleanup(dq, SSH_FAIL_WINDOW, now)
+            _cleanup(dq, SSH_FAIL_WINDOW, ts)
 
             if len(dq) >= SSH_FAIL_THRESHOLD:
-                detections.append({
-                    "rule": "SSH_BRUTE_FORCE",
-                    "ip": ip,
-                    "severity": "HIGH"
-                })
-                create_incident(
-                    "SSH_BRUTE_FORCE",
-                    ip,
-                    f"{len(dq)} SSH failures",
-                    "HIGH"
+                count = len(dq)
+                severity = calculate_severity(count)
+                confidence = calculate_confidence(count)
+
+                incident = get_incident(ip, ts)
+                add_signal(
+                    incident,
+                    rule="SSH_BRUTE_FORCE",
+                    count=count,
+                    severity=severity,
+                    confidence=confidence,
+                    mitre_id="T1110"
                 )
+
                 dq.clear()
+
             SSH_LAST_FAIL[ip] = ts
 
+        # -------------------------
         # SSH success after failure
-        elif etype == "ssh_success" and ip:
+        # -------------------------
+        elif etype == "ssh_success":
             last_fail = SSH_LAST_FAIL.get(ip)
-            if last_fail and (now - last_fail) <= SSH_SUCCESS_WINDOW:
-                detections.append({
-                    "rule": "SSH_SUCCESS_AFTER_FAIL",
-                    "ip": ip,
-                    "severity": "MEDIUM"
-                })
-                create_incident(
-                    "SSH_SUCCESS_AFTER_FAIL",
-                    ip,
-                    "Successful SSH login after failures",
-                    "MEDIUM"
+            if last_fail and (ts - last_fail) <= SSH_SUCCESS_WINDOW:
+                incident = get_incident(ip, ts)
+                add_signal(
+                    incident,
+                    rule="SSH_SUCCESS_AFTER_FAIL",
+                    count=1,
+                    severity="HIGH",
+                    confidence=0.9,
+                    mitre_id="T1078"
                 )
+
                 SSH_LAST_FAIL.pop(ip, None)
 
-        # Collect port hits (batch)
-        elif etype == "port_hit" and ip:
+        # -------------------------
+        # Port hits
+        # -------------------------
+        elif etype == "port_hit":
             port = event.get("port")
             if port is not None:
                 PORT_HITS[ip].append((ts, port))
 
+        # -------------------------
         # Sudo brute-force
-        elif etype == "sudo_failed" and ip:
+        # -------------------------
+        elif etype == "sudo_failed":
             dq = SUDO_FAILS[ip]
             dq.append(ts)
-            _cleanup(dq, SUDO_FAIL_WINDOW, now)
+            _cleanup(dq, SUDO_FAIL_WINDOW, ts)
 
             if len(dq) >= SUDO_FAIL_THRESHOLD:
-                detections.append({
-                    "rule": "SUDO_BRUTE_FORCE",
-                    "ip": ip,
-                    "severity": "HIGH"
-                })
-                create_incident(
-                    "SUDO_BRUTE_FORCE",
-                    ip,
-                    "Multiple sudo authentication failures",
-                    "HIGH"
+                count = len(dq)
+                severity = calculate_severity(count)
+                confidence = calculate_confidence(count)
+
+                incident = get_incident(ip, ts)
+                add_signal(
+                    incident,
+                    rule="SUDO_BRUTE_FORCE",
+                    count=count,
+                    severity=severity,
+                    confidence=confidence,
+                    mitre_id="T1548"
                 )
+
                 dq.clear()
 
-        # New user creation
-        elif etype == "new_user":
-            user = event.get("user", "unknown")
-            detections.append({
-                "rule": "NEW_USER_CREATED",
-                "user": user,
-                "severity": "MEDIUM"
-            })
-            create_incident(
-                "NEW_USER_CREATED",
-                None,
-                f"New system user created: {user}",
-                "MEDIUM"
-            )
-
-    # =========================
-    # Batch PORT SCAN detection
-    # =========================
+    # -------------------------
+    # Batch PORT SCAN
+    # -------------------------
     for ip, dq in PORT_HITS.items():
         unique_ports = {p for _, p in dq}
         if len(unique_ports) >= PORT_SCAN_THRESHOLD:
-            detections.append({
-                "rule": "PORT_SCAN",
-                "ip": ip,
-                "ports": sorted(unique_ports),
-                "severity": "HIGH"
-            })
-            create_incident(
-                "PORT_SCAN",
-                ip,
-                f"Port scan on ports: {sorted(unique_ports)}",
-                "HIGH"
+            count = len(unique_ports)
+            severity = calculate_severity(count)
+            confidence = calculate_confidence(count, max_attempts=50)
+
+            incident = get_incident(ip, int(time.time()))
+            add_signal(
+                incident,
+                rule="PORT_SCAN",
+                count=count,
+                severity=severity,
+                confidence=confidence,
+                mitre_id="T1046"
             )
 
-    return detections
+    # -------------------------
+    # Finalize incidents
+    # -------------------------
+    final_incidents = []
+
+    for incident in INCIDENTS.values():
+        persist_incident(incident)
+        final_incidents.append(incident)
+
+    return final_incidents
 
 
 # =========================
 # Dashboard helper
 # =========================
-def get_recent_incidents(limit=100):
+def get_recent_incidents(limit=50):
     conn = sqlite3.connect(DB_PATH)
     cur = conn.cursor()
     cur.execute("""
-        SELECT ts, rule, source_ip, details, severity
+        SELECT ts, incident_id, source_ip, severity, confidence, details
         FROM incidents
         ORDER BY ts DESC
         LIMIT ?

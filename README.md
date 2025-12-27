@@ -1,29 +1,97 @@
-# Mini SOC Detection Engine
+# 🛡️ Mini-SOC — Host-Based Detection & Alert Correlation
 
-A lightweight SOC-style detection and response engine written in Python.
-Designed to detect SSH-based attacks using log analysis and rule-based logic.
+Mini-SOC is a lightweight **Security Operations Center (SOC) simulation tool** written in Python.  
+It detects suspicious SSH activity on a Linux host, correlates raw detections to reduce alert noise, and generates **SOC-style alerts and structured security reports**.
 
-## Features
-- SSH log collection (auth.log, journalctl)
+This project focuses on **detection engineering fundamentals** rather than full SIEM deployment.
+
+---
+
+## 🎯 Key Objectives
+
+- Detect SSH-based attacks using log analysis
+- Reduce alert fatigue through correlation and aggregation
+- Present alerts in an analyst-friendly format
+- Generate machine-readable security reports (JSON)
+- Demonstrate real SOC workflows in a simple, inspectable system
+
+---
+
+## 🔍 Features
+
+- SSH log collection (`auth.log`, `journalctl`)
 - Rule-based detection engine
-- Alert generation
-- Automated response hook
-- Pytest-based detection validation
+- Alert aggregation (deduplication + count)
+- SOC-style terminal alerts
+- Executive-ready JSON reports
+- Optional automated response hook
+- Pytest-based rule validation
 
-## Project Structure
-collectors/     → Log ingestion  
-engine/         → Detection & alert logic  
-rules/          → Detection rules  
-response/       → Automated response scripts  
-reports/        → SOC outputs  
-tests/          → Pytest validation  
+---
 
-## How It Works
-1. Collects SSH authentication logs
-2. Applies detection rules
-3. Generates alerts
-4. Triggers response actions (optional)
+## 🧠 How It Works (Detection Flow)
 
-## Run
-```bash
-python main.py
+
+---
+
+## 📂 Project Structure
+
+```text
+mini-soc/
+├── collectors/          # Log collection modules
+├── engine/              # Detection, alerting, reporting logic
+├── reports/             # Generated SOC reports (JSON)
+├── response/            # Optional active response scripts
+├── rules/               # Detection rules
+├── incidents.db         # SQLite evidence store
+├── main.py              # Main execution pipeline
+├── README.md            # Project documentation
+└── requirements.txt
+
+
+
+Terminal output:-
+
+======================================================================
+[ALERT] SSH_BRUTE_FORCE
+ First Seen : 2025-12-27 13:18:11
+ Severity   : HIGH
+ Source IP  : 10.1.1.54
+ Count      : 4
+======================================================================
+
+Example report(JSON):-
+
+
+{
+  "generated_at": "2025-12-27T13:18:11",
+  "total_alerts": 6,
+  "severity_breakdown": {
+    "HIGH": 3,
+    "MEDIUM": 3
+  },
+  "alerts": [
+    {
+      "rule": "SSH_BRUTE_FORCE",
+      "severity": "HIGH",
+      "ip": "10.1.1.54",
+      "first_seen": "2025-12-27 13:18:11",
+      "count": 4
+    }
+  ]
+}
+
+
+
+
+🚀 Future Enhancements
+
+MITRE ATT&CK technique mapping
+
+Alert suppression / cooldown windows
+
+Email or Slack alerting
+
+Daily SOC summary reports
+
+SIEM-compatible export formats

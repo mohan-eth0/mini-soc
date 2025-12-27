@@ -2,36 +2,39 @@
 
 from collectors import ssh_journal, ssh_authlog, ssh_advanced
 from engine import rule_engine, alert_engine
+from datetime import datetime
 import subprocess
 
-ENABLE_RESPONSE = False  # keep false for now
+ENABLE_RESPONSE = False  # keep disabled for safety
 
 
 def collect_events():
     events = []
-
     events += ssh_journal.collect()
     events += ssh_authlog.collect()
     events += ssh_advanced.collect()
-
     return events
 
 
 def main():
     print("[*] Mini-SOC starting")
 
+    # 1. Collect logs
     events = collect_events()
     print(f"[*] Collected {len(events)} events")
 
-    detections = rule_engine.evaluate(events)
-    print(f"[*] Detections: {len(detections)}")
+    # 2. Detect + correlate incidents
+    incidents = rule_engine.evaluate(events)
+    print(f"[*] Detections: {len(incidents)}")
 
-    for d in detections:
-        alert_engine.send(d)
+    # 3. Present incidents
+    for incident in incidents:
+        alert_engine.send(incident)
 
-        if ENABLE_RESPONSE and d.get("severity") == "HIGH":
+        # Optional auto-response (incident-level)
+        if ENABLE_RESPONSE and incident["severity"] in ("HIGH", "CRITICAL"):
             subprocess.call(
-                ["sudo", "./response/self_heal.sh", d["ip"]]
+                ["sudo", "./response/self_heal.sh", incident["source_ip"]]
             )
 
     print("[*] Mini-SOC run complete")
@@ -39,3 +42,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
