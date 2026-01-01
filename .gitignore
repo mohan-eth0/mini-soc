@@ -27,8 +27,13 @@ Thumbs.db
 # Test cache
 .pytest_cache/
 
-#mail
-config/*.json
 
+# Secrets (real credentials)
+config/email.json
+
+# Mail secrets
+config/email.json
+
+# Runtime SOC state
 state/email_suppression.json
 state/last_run.json
