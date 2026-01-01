@@ -85,6 +85,17 @@ Example report(JSON):-
 }
 
 
+## 🎯 MITRE ATT&CK Coverage (v1.0.0)
+
+| Detection | Technique ID | Technique Name |
+|---------|-------------|----------------|
+| SSH Brute Force | T1110 | Brute Force |
+| SSH Success After Fail | T1110.001 | Password Guessing |
+| Repeated Authentication Attempts | T1078 | Valid Accounts |
+| SSH Remote Access | T1021.004 | Remote Services: SSH |
+
+MITRE ATT&CK mapping is applied at detection time and preserved in incident records.
+
 
 
 🚀 Future Enhancements:-
