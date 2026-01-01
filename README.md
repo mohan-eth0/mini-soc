@@ -1,4 +1,7 @@
-# 🛡️ Mini-SOC — Host-Based Detection & Alert Correlation
+#🛡️ Mini-SOC v1.0.0 — Host-Based Detection & Alert Correlation
+Version 1.0.0 focuses on local, host-based detection and SOC-style alerting.  
+Cloud deployment and email alerting are planned for v2.0.0.
+
 
 Mini-SOC is a lightweight **Security Operations Center (SOC) simulation tool** written in Python.  
 It detects suspicious SSH activity on a Linux host, correlates raw detections to reduce alert noise, and generates **SOC-style alerts and structured security reports**.
