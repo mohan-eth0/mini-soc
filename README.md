@@ -95,6 +95,7 @@ Example report(JSON):-
 | SSH Remote Access | T1021.004 | Remote Services: SSH |
 
 MITRE ATT&CK mapping is applied at detection time and preserved in incident records.
+happy
 
 
 
