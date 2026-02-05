@@ -1,0 +1,10 @@
+{
+  "enabled": true,
+  "host": "smtp.gmail.com",
+  "port": 587,
+  "use_tls": true,
+  "user": "your_email@gmail.com",
+  "password": "APP_PASSWORD",
+  "from": "your_email@gmail.com",
+  "to": ["alerts@example.com"]
+}
